@@ -1,13 +1,8 @@
 import 'dart:async';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
-
 import 'package:drawing_app/drawn_line.dart';
 import 'package:drawing_app/sketcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 
 class DrawingPage extends StatefulWidget {
   @override
@@ -21,124 +16,89 @@ class _DrawingPageState extends State<DrawingPage> {
   Color selectedColor = Colors.black;
   double selectedWidth = 5.0;
 
-  StreamController<List<DrawnLine>> linesStreamController = StreamController<List<DrawnLine>>.broadcast();
-  StreamController<DrawnLine> currentLineStreamController = StreamController<DrawnLine>.broadcast();
+  StreamController<List<DrawnLine>> linesStreamController =
+      StreamController<List<DrawnLine>>.broadcast();
+  StreamController<DrawnLine> currentLineStreamController =
+      StreamController<DrawnLine>.broadcast();
 
   Future<void> save() async {
-    try {
-      RenderRepaintBoundary boundary = _globalKey.currentContext.findRenderObject() as RenderRepaintBoundary;
-      ui.Image image = await boundary.toImage();
-      ByteData byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      Uint8List pngBytes = byteData.buffer.asUint8List();
-      var saved = await ImageGallerySaver.saveImage(
-        pngBytes,
-        quality: 100,
-        name: DateTime.now().toIso8601String() + ".png",
-        isReturnImagePathOfIOS: true,
-      );
-      print(saved);
-    } catch (e) {
-      print(e);
-    }
+    // TODO
   }
 
   Future<void> clear() async {
+    // TODO
+  }
+
+  void onPanStart(DragStartDetails details) {
+    // is executed when the user touches the screen and starts dragging their finger around it.
+
+    final box = context.findRenderObject() as RenderBox;
+    final point = box.globalToLocal(details.globalPosition);
+    line = DrawnLine([point], selectedColor, selectedWidth);
+    currentLineStreamController.add(line);
+  }
+
+  void onPanUpdate(DragUpdateDetails details) {
+    // When the user is dragging their finger on the screen without lifting it off the screen, the app executes this methodes
+    final box = context.findRenderObject() as RenderBox;
+    final point = box.globalToLocal(details.globalPosition);
+    List<Offset> path = List.from(line.path)..add(point);
+    line = DrawnLine(path, selectedColor, selectedWidth);
+    currentLineStreamController.add(line);
     setState(() {
-      lines = [];
-      line = null;
+      if (lines.length == 0) {
+        lines.add((line));
+      } else {
+        lines[lines.length - 1] = line;
+      }
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          buildAllPaths(context),
-          buildCurrentPath(context),
-          buildStrokeToolbar(),
-          buildColorToolbar(),
-        ],
-      ),
-    );
+  void onPanEnd(DragEndDetails details) {
+    //  is executed when the user lifts their finger off the screen.
+    lines = List.from(lines)..add(line);
+    linesStreamController.add(lines);
   }
 
   GestureDetector buildCurrentPath(BuildContext context) {
     return GestureDetector(
-      onPanStart: onPanStart,
-      onPanUpdate: onPanUpdate,
-      onPanEnd: onPanEnd,
-      child: RepaintBoundary(
-        child: Container(
-          width: MediaQuery.of(context).size.width,
-          height: MediaQuery.of(context).size.height,
-          padding: EdgeInsets.all(4.0),
-          alignment: Alignment.topLeft,
-          color: Colors.transparent,
-          child: StreamBuilder<DrawnLine>(
-            stream: currentLineStreamController.stream,
-            builder: (context, snapshot) {
-              return CustomPaint(
-                painter: Sketcher(
+        onPanStart: onPanStart,
+        onPanUpdate: onPanUpdate,
+        onPanEnd: onPanEnd,
+        child: RepaintBoundary(
+          child: Container(
+            child: StreamBuilder<DrawnLine>(
+              stream: currentLineStreamController.stream,
+              builder: (context, snapshot) {
+                return CustomPaint(
+                    painter: Sketcher(
                   lines: [line],
-                ),
-              );
-            },
+                ));
+              },
+            ),
+            color: Colors.transparent,
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
           ),
-        ),
-      ),
-    );
+        ));
   }
 
-  RepaintBoundary buildAllPaths(BuildContext context) {
+  Widget buildAllPaths(BuildContext context) {
     return RepaintBoundary(
       key: _globalKey,
       child: Container(
-        width: MediaQuery.of(context).size.width,
-        height: MediaQuery.of(context).size.height,
-        padding: EdgeInsets.all(4.0),
-        alignment: Alignment.topLeft,
-        color: Colors.yellow[50],
-        child: StreamBuilder<List<DrawnLine>>(
-          stream: linesStreamController.stream,
-          builder: (context, snapshot) {
-            return CustomPaint(
-              painter: Sketcher(
-                lines: lines,
-              ),
-            );
-          },
-        ),
-      ),
+          width: MediaQuery.of(context).size.width,
+          height: MediaQuery.of(context).size.width,
+          child: StreamBuilder<List<DrawnLine>>(
+            stream: linesStreamController.stream,
+            builder: (context, snapshot) => CustomPaint(
+              painter: Sketcher(lines: lines),
+            ),
+          )),
     );
   }
 
-  onPanStart(DragStartDetails details) {
-    RenderBox box = context.findRenderObject();
-    Offset point;
-
-    point = box.globalToLocal(details.globalPosition);
-    line = DrawnLine([point], selectedColor, selectedWidth);
-  }
-
-  onPanUpdate(DragUpdateDetails details) {
-    RenderBox box = context.findRenderObject();
-    Offset point;
-
-    point = box.globalToLocal(details.globalPosition);
-
-    List<Offset> path = List.from(line.path)..add(point);
-    line = DrawnLine(path, selectedColor, selectedWidth);
-    currentLineStreamController.add(line);
-  }
-
-  onPanEnd(DragEndDetails details) {
-    lines = List.from(lines)..add(line);
-
-    linesStreamController.add(lines);
-  }
-
-  Positioned buildStrokeToolbar() {
+  Widget buildStrokeToolbar() {
     return Positioned(
       bottom: 100.0,
       right: 10.0,
@@ -154,7 +114,7 @@ class _DrawingPageState extends State<DrawingPage> {
     );
   }
 
-  GestureDetector buildStrokeButton(double strokeWidth) {
+  Widget buildStrokeButton(double strokeWidth) {
     return GestureDetector(
       onTap: () {
         selectedWidth = strokeWidth;
@@ -164,13 +124,14 @@ class _DrawingPageState extends State<DrawingPage> {
         child: Container(
           width: strokeWidth * 2,
           height: strokeWidth * 2,
-          decoration: BoxDecoration(color: selectedColor, borderRadius: BorderRadius.circular(12.0)),
+          decoration: BoxDecoration(
+              color: selectedColor, borderRadius: BorderRadius.circular(20.0)),
         ),
       ),
     );
   }
 
-  Positioned buildColorToolbar() {
+  Widget buildColorToolbar() {
     return Positioned(
       top: 40.0,
       right: 10.0,
@@ -178,14 +139,6 @@ class _DrawingPageState extends State<DrawingPage> {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          buildClearButton(),
-          Divider(
-            height: 10.0,
-          ),
-          buildSaveButton(),
-          Divider(
-            height: 20.0,
-          ),
           buildColorButton(Colors.red),
           buildColorButton(Colors.blueAccent),
           buildColorButton(Colors.deepOrange),
@@ -198,7 +151,7 @@ class _DrawingPageState extends State<DrawingPage> {
     );
   }
 
-  Padding buildColorButton(Color color) {
+  Widget buildColorButton(Color color) {
     return Padding(
       padding: const EdgeInsets.all(4.0),
       child: FloatingActionButton(
@@ -214,7 +167,7 @@ class _DrawingPageState extends State<DrawingPage> {
     );
   }
 
-  GestureDetector buildSaveButton() {
+  Widget buildSaveButton() {
     return GestureDetector(
       onTap: save,
       child: CircleAvatar(
@@ -227,7 +180,7 @@ class _DrawingPageState extends State<DrawingPage> {
     );
   }
 
-  GestureDetector buildClearButton() {
+  Widget buildClearButton() {
     return GestureDetector(
       onTap: clear,
       child: CircleAvatar(
@@ -238,5 +191,27 @@ class _DrawingPageState extends State<DrawingPage> {
         ),
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.yellow[50],
+      body: Stack(
+        children: [
+          buildAllPaths(context), // Add this
+          buildCurrentPath(context),
+          buildColorToolbar(),
+          buildStrokeToolbar(),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    linesStreamController.close();
+    currentLineStreamController.close();
+    super.dispose();
   }
 }
